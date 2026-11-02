@@ -110,7 +110,7 @@ button.main:hover{background:#a65a22}
       <button class="main" id="rnd" style="width:auto;margin:0;padding:0 14px;font-size:18px" aria-label="Zufallscode">🎲</button>
     </div>
     <button class="main" id="join" style="background:#3f6a2a;margin-top:12px">Mit Freunden spielen</button>
-    <div id="mode"></div><div style="font-size:13px;margin-top:10px;opacity:.75;line-height:1.4">Steuerung: WASD / Pfeile = laufen · E = reden · J = Angriff · 1–4 = Fertigkeiten · T = Fertigkeitenbaum. Am Handy: Stick, ⚔ und die Zahlenknöpfe.</div>
+    <div id="mode"></div><div style="font-size:13px;margin-top:10px;opacity:.75;line-height:1.4">Steuerung: WASD / Pfeile = laufen · E = reden · Linksklick = Nahangriff · Rechtsklick = Fernangriff (oder J / ⚔) · 1–4 = Fertigkeiten · T = Fertigkeitenbaum. Am Handy: Stick, ⚔ und die Zahlenknöpfe.</div>
   </div>
 </div>
 
@@ -439,7 +439,7 @@ const SKILLS=[
  {id:"rolle",br:2,n:"Ausweichrolle",d:"[4] Sprung, dabei unverwundbar, 4 s",max:1,req:["zaeh",2],key:3}
 ];
 const BR=["Krieger","Funker","Überleben"],CDS=[6,3,20,4],FACE={right:[1,0],left:[-1,0],down:[0,1],up:[0,-1]};
-const PL={lv:1,xp:0,sp:1,sk:{},hp:100,inv:0,atkT:0,swing:0,spin:0,cd:[0,0,0,0],dead:0,dashT:0};
+const PL={lv:1,xp:0,sp:1,sk:{},hp:100,inv:0,atkT:0,shootT:0,swing:0,spin:0,cd:[0,0,0,0],dead:0,dashT:0};
 const sk=id=>PL.sk[id]||0;
 const maxHP=()=>100+(PL.lv-1)*10+sk("zaeh")*15;
 const dmgBase=()=>10+(PL.lv-1)+sk("kraft")*4;
@@ -483,16 +483,16 @@ function hurtMe(d,fx_,fy_){
   const dx=me.x-fx_,dy=me.y-fy_,l=Math.hypot(dx,dy)||1,nx=me.x+dx/l*16,ny=me.y+dy/l*16;if(!blocked(nx,me.y))me.x=nx;if(!blocked(me.x,ny))me.y=ny;
   if(PL.hp<=0){PL.hp=0;PL.dead=2.5;toast("Bezwungen …")}
 }
-function attack(){
+function attack(m){
   if(!started||state.talk||treeOpen||PL.dead>0||PL.atkT>0)return;
-  PL.atkT=.42;PL.swing=.18;const f=FACE[me.d],dm=dmgBase();
+  PL.atkT=.42;PL.swing=.18;const f=m?aimMouse():FACE[me.d],dm=dmgBase();PL.aim=Math.atan2(f[1],f[0]);
   enemies.slice().forEach(e=>{const dx=e.x-me.x,dy=e.y-me.y,d=Math.hypot(dx,dy);if(d<64+e.tp.r&&(dx*f[0]+dy*f[1])/(d||1)>.25)dmgEnemy(e,dm,f[0]*200,f[1]*200)});
 }
 function useSkill(i){
   const s=SKILLS.find(q=>q.key===i);if(!s||!sk(s.id)||PL.cd[i]>0||!started||state.talk||treeOpen||PL.dead>0)return;
   const L=sk(s.id),f=FACE[me.d];PL.cd[i]=CDS[i];
   if(i===0){PL.spin=.3;enemies.slice().forEach(e=>{const dx=e.x-me.x,dy=e.y-me.y,d=Math.hypot(dx,dy)||1;if(d<95+e.tp.r)dmgEnemy(e,Math.round(dmgBase()*(1.2+L*.3)),dx/d*240,dy/d*240)})}
-  else if(i===1)projs.push({x:me.x,y:me.y,vx:f[0]*320,vy:f[1]*320,life:1,dmg:Math.round(dmgBase()*.8+8+L*6)});
+  else if(i===1){const g=mouse.on?aimMouse():f;projs.push({x:me.x,y:me.y,vx:g[0]*320,vy:g[1]*320,life:1,dmg:Math.round(dmgBase()*.8+8+L*6)})}
   else if(i===2){const h=Math.round(maxHP()*(.2+L*.1));PL.hp=Math.min(maxHP(),PL.hp+h);floatTxt(me.x,me.y-60,"+"+h,"#7aff9a")}
   else if(i===3){PL.dashT=.22;PL.inv=Math.max(PL.inv,.35)}
 }
@@ -522,7 +522,7 @@ function combatTick(dt){
   const frozen=state.talk||treeOpen;
   if(PL.dead>0){PL.dead-=dt;if(PL.dead<=0){me.x=SPAWN[0]*T;me.y=SPAWN[1]*T;PL.hp=maxHP();PL.inv=2;toast("Du erwachst am Dorfrand.")}}
   else if(!frozen){
-    PL.atkT-=dt;PL.swing-=dt;PL.spin-=dt;PL.inv-=dt;PL.cd=PL.cd.map(v=>Math.max(0,v-dt));
+    PL.atkT-=dt;PL.shootT-=dt;PL.swing-=dt;PL.spin-=dt;PL.inv-=dt;PL.cd=PL.cd.map(v=>Math.max(0,v-dt));
     if(PL.dashT>0){PL.dashT-=dt;const f=FACE[me.d],sp=420*dt;if(!blocked(me.x+f[0]*sp,me.y))me.x+=f[0]*sp;if(!blocked(me.x,me.y+f[1]*sp))me.y+=f[1]*sp}
     if(PL.hp<maxHP()&&safe(me.x,me.y))PL.hp=Math.min(maxHP(),PL.hp+4*dt);
     updProj(dt);
@@ -540,7 +540,7 @@ function drawEnemy(en,t){
 }
 function drawFx(dt){
   const f=FACE[me.d];
-  if(PL.swing>0&&PL.dead<=0){const a=Math.atan2(f[1],f[0]);ctx.save();ctx.globalAlpha=Math.max(0,PL.swing/.18);ctx.strokeStyle="#fff3d0";ctx.lineWidth=6;ctx.lineCap="round";ctx.beginPath();ctx.arc(me.x,me.y-16,44,a-1,a+1);ctx.stroke();ctx.restore()}
+  if(PL.swing>0&&PL.dead<=0){const a=PL.aim||0;ctx.save();ctx.globalAlpha=Math.max(0,PL.swing/.18);ctx.strokeStyle="#fff3d0";ctx.lineWidth=6;ctx.lineCap="round";ctx.beginPath();ctx.arc(me.x,me.y-16,44,a-1,a+1);ctx.stroke();ctx.restore()}
   if(PL.spin>0){ctx.save();ctx.globalAlpha=Math.max(0,PL.spin/.3);ctx.strokeStyle="#ffd36a";ctx.lineWidth=7;ctx.beginPath();ctx.ellipse(me.x,me.y-12,95,70,0,0,7);ctx.stroke();ctx.restore()}
   projs.forEach(p=>{const gr=ctx.createRadialGradient(p.x,p.y-18,0,p.x,p.y-18,13);gr.addColorStop(0,"#ffffff");gr.addColorStop(.4,"#9ad8ff");gr.addColorStop(1,"rgba(154,216,255,0)");ctx.fillStyle=gr;ctx.fillRect(p.x-13,p.y-31,26,26)});
   for(let i=lines.length-1;i>=0;i--){const l=lines[i];l.t-=dt;if(l.t<=0){lines.splice(i,1);continue}ctx.save();ctx.globalAlpha=l.t/.25;ctx.strokeStyle="#9ad8ff";ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(l.x1,l.y1);ctx.lineTo(l.x2,l.y2);ctx.stroke();ctx.restore()}
@@ -572,6 +572,17 @@ function updCombatUI(){
   slots.forEach((el,i)=>{const s=SKILLS.find(q=>q.key===i),ok=sk(s.id)>0;el.classList.toggle("off",!ok);el.firstChild.style.width=(ok?Math.min(100,PL.cd[i]/CDS[i]*100):0)+"%";$("skm").children[i].style.opacity=ok?(PL.cd[i]>0?.5:1):.3});
   $("treeBtn").textContent="Fertigkeiten (T)"+(PL.sp>0?"  ★ "+PL.sp:"");
 }
+const mouse={cx:0,cy:0,on:false};
+function aimMouse(){const wx=cam.x+mouse.cx*DPR/S,wy=cam.y+mouse.cy*DPR/S,dx=wx-me.x,dy=wy-(me.y-16),l=Math.hypot(dx,dy)||1;
+  if(Math.abs(dx)>Math.abs(dy))me.d=dx>0?"right":"left";else me.d=dy>0?"down":"up";return[dx/l,dy/l]}
+function shoot(m){
+  if(!started||state.talk||treeOpen||PL.dead>0||PL.shootT>0)return;
+  PL.shootT=.8;const f=m?aimMouse():FACE[me.d];
+  projs.push({x:me.x,y:me.y,vx:f[0]*320,vy:f[1]*320,life:1,dmg:Math.round(dmgBase()*.6+4+sk("funke")*6)});
+}
+cv.addEventListener("pointermove",e=>{if(e.pointerType==="mouse"){mouse.on=true;mouse.cx=e.clientX;mouse.cy=e.clientY}});
+cv.addEventListener("pointerdown",e=>{if(e.pointerType!=="mouse"||!started)return;mouse.on=true;mouse.cx=e.clientX;mouse.cy=e.clientY;if(e.button===0)attack(true);else if(e.button===2)shoot(true)});
+cv.addEventListener("contextmenu",e=>e.preventDefault());
 buildHotbar();
 $("atk").addEventListener("pointerdown",e=>{e.preventDefault();attack()});
 [...$("skm").children].forEach(b=>b.addEventListener("pointerdown",e=>{e.preventDefault();useSkill(+b.dataset.sk)}));
